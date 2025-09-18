@@ -1,0 +1,173 @@
+version: "3.9"
+
+services:
+  zk1:
+    image: bitnami/zookeeper:3.9
+    container_name: zk1
+    environment:
+      - ZOO_SERVER_ID=1
+      - ZOO_SERVERS=zk1:2888:3888:participant;zk2:2888:3888:participant;zk3:2888:3888:participant
+      - ZOO_PORT_NUMBER=2181
+      - ZOO_ENABLE_PROMETHEUS_METRICS=yes
+      - ZOO_PROMETHEUS_METRICS_PORT=7000
+      - ZOO_TICK_TIME=2000
+      - ZOO_AUTOPURGE_INTERVAL=1
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    ports:
+      - "2181:2181"
+      - "7001:7000"
+    networks:
+      - zk_net
+    volumes:
+      - zk1_data:/bitnami/zookeeper
+      - ./logs/zk1:/opt/bitnami/zookeeper/logs
+
+  zk2:
+    image: bitnami/zookeeper:3.9
+    container_name: zk2
+    environment:
+      - ZOO_SERVER_ID=2
+      - ZOO_SERVERS=zk1:2888:3888:participant;zk2:2888:3888:participant;zk3:2888:3888:participant
+      - ZOO_PORT_NUMBER=2181
+      - ZOO_ENABLE_PROMETHEUS_METRICS=yes
+      - ZOO_PROMETHEUS_METRICS_PORT=7000
+      - ZOO_TICK_TIME=2000
+      - ZOO_AUTOPURGE_INTERVAL=1
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    ports:
+      - "2182:2181"
+      - "7002:7000"
+    networks:
+      - zk_net
+    volumes:
+      - zk2_data:/bitnami/zookeeper
+      - ./logs/zk2:/opt/bitnami/zookeeper/logs
+
+  zk3:
+    image: bitnami/zookeeper:3.9
+    container_name: zk3
+    environment:
+      - ZOO_SERVER_ID=3
+      - ZOO_SERVERS=zk1:2888:3888:participant;zk2:2888:3888:participant;zk3:2888:3888:participant
+      - ZOO_PORT_NUMBER=2181
+      - ZOO_ENABLE_PROMETHEUS_METRICS=yes
+      - ZOO_PROMETHEUS_METRICS_PORT=7000
+      - ZOO_TICK_TIME=2000
+      - ZOO_AUTOPURGE_INTERVAL=1
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    ports:
+      - "2183:2181"
+      - "7003:7000"
+    networks:
+      - zk_net
+    volumes:
+      - zk3_data:/bitnami/zookeeper
+      - ./logs/zk3:/opt/bitnami/zookeeper/logs
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    networks:
+      - zk_net
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_USERS_DEFAULT_THEME=dark
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - zk_net
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.18
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elastic_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - zk_net
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:7.17.18
+    container_name: filebeat
+    user: root
+    depends_on:
+      - elasticsearch
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./logs/zk1:/logs/zk1:ro
+      - ./logs/zk2:/logs/zk2:ro
+      - ./logs/zk3:/logs/zk3:ro
+      - ./logs/backend:/logs/backend:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - zk_net
+
+  backend:
+    build:
+      context: ./backend
+    container_name: zk-demo-backend
+    user: "0:0"
+    environment:
+      - ZK_NODES=zk1:2181,zk2:2181,zk3:2181
+      - PROMETHEUS_URL=http://prometheus:9090
+      - DOCKER_CONTROL_ENABLED=true
+      - FILE_STORAGE_PATH=/data/uploads
+      - AUTO_SCHEDULER_INTERVAL=15
+      - SCHEDULER_THRESHOLD=5
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    volumes:
+      - ./data/uploads:/data/uploads
+      - ./logs/backend:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./frontend:/app/frontend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - zk1
+      - zk2
+      - zk3
+      - prometheus
+    networks:
+      - zk_net
+
+networks:
+  zk_net:
+    driver: bridge
+
+volumes:
+  zk1_data:
+  zk2_data:
+  zk3_data:
+  elastic_data:

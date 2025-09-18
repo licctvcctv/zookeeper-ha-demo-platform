@@ -1,0 +1,41 @@
+filebeat.inputs:
+  - type: filestream
+    id: zk-logs
+    enabled: true
+    paths:
+      - /logs/zk1/*.log
+      - /logs/zk1/*.out
+      - /logs/zk2/*.log
+      - /logs/zk2/*.out
+      - /logs/zk3/*.log
+      - /logs/zk3/*.out
+    fields:
+      service:
+        name: zookeeper
+    fields_under_root: true
+
+  - type: filestream
+    id: backend-log
+    enabled: true
+    paths:
+      - /logs/backend/*.log
+    fields:
+      service:
+        name: backend
+    fields_under_root: true
+
+processors:
+  - add_host_metadata: ~
+  - add_docker_metadata: ~
+
+setup.template.enabled: true
+setup.template.name: "filebeat"
+setup.template.pattern: "filebeat-*"
+setup.ilm.enabled: false
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  index: "filebeat-%{+yyyy.MM.dd}"
+
+logging.level: debug
+logging.selectors: ["elasticsearch"]

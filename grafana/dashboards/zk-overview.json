@@ -71,8 +71,8 @@
       "pluginVersion": "10.4.2",
       "targets": [
         {
-          "expr": "num_alive_connections",
-          "legendFormat": "{{instance}}",
+          "expr": "zk_num_alive_connections",
+          "legendFormat": "{{zk_host}}",
           "refId": "A"
         }
       ],
@@ -132,8 +132,8 @@
       "pluginVersion": "10.4.2",
       "targets": [
         {
-          "expr": "znode_count",
-          "legendFormat": "{{instance}}",
+          "expr": "zk_znode_count",
+          "legendFormat": "{{zk_host}}",
           "refId": "A"
         }
       ],
@@ -184,8 +184,8 @@
       "pluginVersion": "10.4.2",
       "targets": [
         {
-          "expr": "avg_latency",
-          "legendFormat": "{{instance}}",
+          "expr": "zk_avg_latency",
+          "legendFormat": "{{zk_host}}",
           "refId": "A"
         }
       ],

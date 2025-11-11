@@ -2,67 +2,88 @@ version: "3.9"
 
 services:
   zk1:
-    image: bitnami/zookeeper:3.9
+    image: zookeeper:3.9
     container_name: zk1
     environment:
-      - ZOO_SERVER_ID=1
-      - ZOO_SERVERS=zk1:2888:3888:participant;zk2:2888:3888:participant;zk3:2888:3888:participant
-      - ZOO_PORT_NUMBER=2181
-      - ZOO_ENABLE_PROMETHEUS_METRICS=yes
-      - ZOO_PROMETHEUS_METRICS_PORT=7000
+      - ZOO_MY_ID=1
+      - ZOO_SERVERS=server.1=zk1:2888:3888;2181 server.2=zk2:2888:3888;2181 server.3=zk3:2888:3888;2181
       - ZOO_TICK_TIME=2000
-      - ZOO_AUTOPURGE_INTERVAL=1
-      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOO_AUTOPURGE_PURGEINTERVAL=1
+      - ZOO_4LW_COMMANDS_WHITELIST=mntr,conf,ruok,stat,srvr
     ports:
       - "2181:2181"
-      - "7001:7000"
     networks:
       - zk_net
     volumes:
-      - zk1_data:/bitnami/zookeeper
-      - ./logs/zk1:/opt/bitnami/zookeeper/logs
+      - zk1_data:/data
+      - ./logs/zk1:/logs
 
   zk2:
-    image: bitnami/zookeeper:3.9
+    image: zookeeper:3.9
     container_name: zk2
     environment:
-      - ZOO_SERVER_ID=2
-      - ZOO_SERVERS=zk1:2888:3888:participant;zk2:2888:3888:participant;zk3:2888:3888:participant
-      - ZOO_PORT_NUMBER=2181
-      - ZOO_ENABLE_PROMETHEUS_METRICS=yes
-      - ZOO_PROMETHEUS_METRICS_PORT=7000
+      - ZOO_MY_ID=2
+      - ZOO_SERVERS=server.1=zk1:2888:3888;2181 server.2=zk2:2888:3888;2181 server.3=zk3:2888:3888;2181
       - ZOO_TICK_TIME=2000
-      - ZOO_AUTOPURGE_INTERVAL=1
-      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOO_AUTOPURGE_PURGEINTERVAL=1
+      - ZOO_4LW_COMMANDS_WHITELIST=mntr,conf,ruok,stat,srvr
     ports:
       - "2182:2181"
-      - "7002:7000"
     networks:
       - zk_net
     volumes:
-      - zk2_data:/bitnami/zookeeper
-      - ./logs/zk2:/opt/bitnami/zookeeper/logs
+      - zk2_data:/data
+      - ./logs/zk2:/logs
 
   zk3:
-    image: bitnami/zookeeper:3.9
+    image: zookeeper:3.9
     container_name: zk3
     environment:
-      - ZOO_SERVER_ID=3
-      - ZOO_SERVERS=zk1:2888:3888:participant;zk2:2888:3888:participant;zk3:2888:3888:participant
-      - ZOO_PORT_NUMBER=2181
-      - ZOO_ENABLE_PROMETHEUS_METRICS=yes
-      - ZOO_PROMETHEUS_METRICS_PORT=7000
+      - ZOO_MY_ID=3
+      - ZOO_SERVERS=server.1=zk1:2888:3888;2181 server.2=zk2:2888:3888;2181 server.3=zk3:2888:3888;2181
       - ZOO_TICK_TIME=2000
-      - ZOO_AUTOPURGE_INTERVAL=1
-      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOO_AUTOPURGE_PURGEINTERVAL=1
+      - ZOO_4LW_COMMANDS_WHITELIST=mntr,conf,ruok,stat,srvr
     ports:
       - "2183:2181"
-      - "7003:7000"
     networks:
       - zk_net
     volumes:
-      - zk3_data:/bitnami/zookeeper
-      - ./logs/zk3:/opt/bitnami/zookeeper/logs
+      - zk3_data:/data
+      - ./logs/zk3:/logs
+
+  zk-exporter-1:
+    image: dabealu/zookeeper-exporter:v0.1.11
+    container_name: zk-exporter-1
+    command: --zk-hosts=zk1:2181 --listen=0.0.0.0:8080
+    ports:
+      - "7001:8080"
+    depends_on:
+      - zk1
+    networks:
+      - zk_net
+
+  zk-exporter-2:
+    image: dabealu/zookeeper-exporter:v0.1.11
+    container_name: zk-exporter-2
+    command: --zk-hosts=zk2:2181 --listen=0.0.0.0:8080
+    ports:
+      - "7002:8080"
+    depends_on:
+      - zk2
+    networks:
+      - zk_net
+
+  zk-exporter-3:
+    image: dabealu/zookeeper-exporter:v0.1.11
+    container_name: zk-exporter-3
+    command: --zk-hosts=zk3:2181 --listen=0.0.0.0:8080
+    ports:
+      - "7003:8080"
+    depends_on:
+      - zk3
+    networks:
+      - zk_net
 
   prometheus:
     image: prom/prometheus:v2.53.0
@@ -137,6 +158,10 @@ services:
   backend:
     build:
       context: ./backend
+      args:
+        PY_BASE: docker.1ms.run/library/python:3.11-slim
+        PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+        PIP_TRUSTED_HOST: pypi.tuna.tsinghua.edu.cn
     container_name: zk-demo-backend
     user: "0:0"
     environment:

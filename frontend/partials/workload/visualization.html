@@ -1,0 +1,73 @@
+<section class="panel" v-if="uploadProgress.length || nodeLoadStatus.length">
+  <h2>实时负载分配可视化</h2>
+  <p class="muted">观察文件如何被智能分配到不同节点，以及负载均衡的动态调整过程</p>
+
+  <div class="notice" style="margin-bottom: 1.5rem;">
+    <strong>当前调度策略：</strong>{{ schedulingStrategy }}
+    <span v-if="schedulerInfo.delta >= schedulerInfo.threshold" style="margin-left: 1rem; color: #f59e0b;">
+      ⚠️ 负载差异达到阈值，触发自动均衡
+    </span>
+  </div>
+
+  <div class="load-cards">
+    <div
+      v-for="node in nodeLoadStatus"
+      :key="node.name"
+      class="load-card"
+      :class="node.status"
+    >
+      <header>
+        <span>{{ node.name }}</span>
+        <span class="load-count">{{ node.fileCount }} 个文件</span>
+      </header>
+      <div class="load-bar">
+        <div class="load-bar-fill" :style="{ width: node.loadPercent + '%' }"></div>
+      </div>
+      <p class="load-status">负载：{{ node.loadPercent }}% {{ node.statusText }}</p>
+    </div>
+  </div>
+
+  <div v-if="uploadProgress.length" style="margin-top: 1.5rem;">
+    <h3>文件分配进度</h3>
+    <div class="upload-progress-list">
+      <div
+        v-for="item in uploadProgress"
+        :key="item.id"
+        class="upload-progress-item"
+        :class="item.status"
+      >
+        <div class="progress-info">
+          <span class="file-name">{{ item.filename }}</span>
+          <span class="file-size">{{ formatBytes(item.size) }}</span>
+        </div>
+        <div class="progress-arrow">→</div>
+        <div class="progress-node">
+          <span class="node-badge" :class="item.status">{{ item.node }}</span>
+        </div>
+        <div class="progress-status">
+          <span v-if="item.status === 'uploading'">上传中...</span>
+          <span v-else-if="item.status === 'success'">✓ 已完成</span>
+          <span v-else-if="item.status === 'error'">✗ 失败</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel" v-if="snapshotCards.length">
+  <h2>调度快照回放</h2>
+  <p class="muted">{{ lastSchedulerNote || '最新操作后的节点文件分布如下：' }}</p>
+  <div class="grid three">
+    <article class="card" v-for="snapshot in snapshotCards" :key="snapshot.label">
+      <h3 style="margin-top:0;">{{ snapshot.label }}</h3>
+      <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.45rem;">
+        <li v-for="row in snapshot.rows" :key="`${snapshot.label}-${row.node}`">
+          <strong>{{ row.node }}</strong>：{{ row.value }} 个文件
+          <span v-if="snapshot.showDelta && row.delta" class="change-tag" :class="row.delta > 0 ? 'change-up' : 'change-down'">
+            {{ row.delta > 0 ? '+' : '' }}{{ row.delta }}
+          </span>
+        </li>
+      </ul>
+    </article>
+  </div>
+</section>

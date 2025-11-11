@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZooKeeper 日志与审计</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <h1>日志与操作审计</h1>
+      <p>集中查看自动调度、运维操作和节点日志，支持关键字搜索与节点实时日志追踪。</p>
+    </header>
+
+    <nav class="navbar">
+      <a href="overview.html">运行概览</a>
+      <a href="workload.html">负载与任务</a>
+      <a href="logs.html" class="active">日志与审计</a>
+    </nav>
+
+    <div id="logs-app">
+      <section class="panel">
+        <h2>集中日志检索</h2>
+        <form @submit.prevent="searchLogs" style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:1rem;">
+          <input type="text" v-model="logQuery" placeholder="关键字或 Lucene 查询" style="flex:1 1 240px;padding:0.55rem 0.75rem;" />
+          <select v-model="logService" style="flex:0 0 160px;padding:0.55rem 0.75rem;">
+            <option value="">全部服务</option>
+            <option value="zookeeper">zookeeper</option>
+            <option value="backend">backend</option>
+            <option value="operations">operations</option>
+          </select>
+          <button type="submit" class="primary" :disabled="logsLoading">{{ logsLoading ? '查询中…' : '查询' }}</button>
+        </form>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>服务</th>
+                <th>主机</th>
+                <th>内容</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="logsLoading">
+                <td colspan="4" style="text-align:center;">加载中…</td>
+              </tr>
+              <tr v-for="log in logs" :key="log.timestamp + (log.message || '')">
+                <td>{{ log.timestamp }}</td>
+                <td>{{ log.service }}</td>
+                <td>{{ log.host || log.container_id }}</td>
+                <td style="max-width:520px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" :title="log.message">{{ log.message }}</td>
+              </tr>
+              <tr v-if="!logsLoading && !logs.length">
+                <td colspan="4" style="text-align:center;">暂无日志数据，尝试调整查询条件。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>操作审计</h2>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>操作</th>
+                <th>节点</th>
+                <th>结果</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="op in operations" :key="op.id">
+                <td>{{ op.timestamp }}</td>
+                <td>{{ op.action }}</td>
+                <td>{{ op.node }}</td>
+                <td>{{ op.status }}</td>
+                <td>{{ op.details }}</td>
+              </tr>
+              <tr v-if="!operations.length">
+                <td colspan="5" style="text-align:center;">暂无操作记录。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>节点实时日志</h2>
+        <div style="display:flex;gap:0.6rem;align-items:center;margin-bottom:0.75rem;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:0.4rem;">
+            节点
+            <select v-model="selectedNode" @change="loadNodeLogs" style="padding:0.45rem 0.75rem;">
+              <option value="" disabled>选择节点</option>
+              <option v-for="node in schedulerNodes" :key="`log-node-${node}`" :value="node">{{ node }}</option>
+            </select>
+          </label>
+          <button type="button" class="primary" @click="loadNodeLogs" :disabled="!selectedNode">刷新日志</button>
+        </div>
+        <pre class="log-output" v-if="logsText">{{ logsText }}</pre>
+        <p v-else class="muted">请选择节点以查看最新日志。</p>
+      </section>
+    </div>
+  </main>
+
+  <script type="module">
+    import { createApp } from 'https://cdn.jsdelivr.net/npm/vue@3.4.27/dist/vue.esm-browser.prod.js';
+    import { API_BASE, fetchJson } from './assets/common.js';
+
+    createApp({
+      data() {
+        return {
+          logs: [],
+          logsLoading: false,
+          logQuery: '',
+          logService: '',
+          operations: [],
+          schedulerInfo: { counts: {} },
+          selectedNode: '',
+          logsText: '',
+        };
+      },
+      computed: {
+        schedulerNodes() {
+          const counts = this.schedulerInfo.counts || {};
+          const keys = Object.keys(counts);
+          if (keys.length) return keys;
+          return [];
+        },
+      },
+      methods: {
+        async refreshScheduler() {
+          this.schedulerInfo = await fetchJson(`${API_BASE}/scheduler/diagnostics`);
+          if (!this.selectedNode && this.schedulerNodes.length) {
+            this.selectedNode = this.schedulerNodes[0];
+          }
+        },
+        async refreshOperations() {
+          this.operations = await fetchJson(`${API_BASE}/operations?limit=50`);
+        },
+        async searchLogs() {
+          this.logsLoading = true;
+          try {
+            const params = new URLSearchParams();
+            if (this.logQuery) params.set('query', this.logQuery);
+            if (this.logService) params.set('service', this.logService);
+            params.set('size', '50');
+            this.logs = await fetchJson(`${API_BASE}/logs/search?${params.toString()}`);
+          } catch (err) {
+            console.error(err);
+          } finally {
+            this.logsLoading = false;
+          }
+        },
+        async loadNodeLogs() {
+          if (!this.selectedNode) return;
+          try {
+            const res = await fetchJson(`${API_BASE}/logs/zookeeper/${this.selectedNode}?tail=200`);
+            this.logsText = `# ${this.selectedNode} 最新日志\n\n${res.logs}`;
+          } catch (err) {
+            this.logsText = `加载失败：${err.message}`;
+          }
+        },
+      },
+      mounted() {
+        this.refreshScheduler();
+        this.refreshOperations();
+        this.searchLogs();
+        setInterval(() => {
+          this.refreshOperations();
+        }, 10000);
+        setInterval(() => {
+          this.searchLogs();
+        }, 15000);
+      },
+    }).mount('#logs-app');
+  </script>
+</body>
+</html>

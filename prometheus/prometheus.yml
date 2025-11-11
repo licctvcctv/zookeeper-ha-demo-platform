@@ -6,7 +6,7 @@ scrape_configs:
   - job_name: "zookeeper"
     metrics_path: "/metrics"
     static_configs:
-      - targets: ["zk1:7000", "zk2:7000", "zk3:7000"]
+      - targets: ["zk-exporter-1:8080", "zk-exporter-2:8080", "zk-exporter-3:8080"]
 
   - job_name: "backend"
     metrics_path: "/metrics"

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZooKeeper 运行概览</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <h1>ZooKeeper 集群运行概览</h1>
+      <p>实时查看三节点 ZooKeeper 集群的健康状态、负载分布与关键指标，快速判断调度是否均衡并定位热点节点。</p>
+    </header>
+
+    <nav class="navbar">
+      <a href="overview.html" class="active">运行概览</a>
+      <a href="workload.html">负载与任务</a>
+      <a href="logs.html">日志与审计</a>
+    </nav>
+
+    <div id="overview-app">
+      <section class="panel">
+        <h2>系统状态概览 <small style="font-size:0.9rem;color:#6b7280;">最近更新：{{ lastUpdatedDisplay }}</small></h2>
+        <div class="grid three" style="margin-bottom: 1.5rem;">
+          <div class="stat-card info">
+            <div class="stat-value">{{ taskStats.total }}</div>
+            <div class="stat-label">总任务数</div>
+          </div>
+          <div class="stat-card warning">
+            <div class="stat-value">{{ taskStats.running }}</div>
+            <div class="stat-label">运行中任务</div>
+          </div>
+          <div class="stat-card success">
+            <div class="stat-value">{{ taskStats.succeeded }}</div>
+            <div class="stat-label">已完成任务</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel load-panel">
+        <h2>节点负载概览</h2>
+        <p class="muted">{{ loadSummaryMessage }}</p>
+        <div class="load-cards">
+          <article class="load-card" :class="item.stateClass" v-for="item in loadSummary" :key="item.node">
+            <header>
+              <span>{{ item.node }}</span>
+              <span class="load-count">{{ item.count }} 个文件</span>
+            </header>
+            <div class="load-bar"><div class="load-bar-fill" :style="{ width: item.percent + '%' }"></div></div>
+            <p class="load-status">{{ item.status }}</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>实时负载图表</h2>
+        <p class="muted">节点任务分布和文件分布的实时可视化</p>
+        <div class="grid two">
+          <article class="card chart-card">
+            <h3 style="margin-top:0;">任务分布</h3>
+            <div class="chart-wrapper">
+              <canvas id="taskChart" height="200"></canvas>
+              <div v-if="taskChartEmpty" class="chart-overlay">暂无任务数据</div>
+            </div>
+          </article>
+          <article class="card chart-card">
+            <h3 style="margin-top:0;">文件分布</h3>
+            <div class="chart-wrapper">
+              <canvas id="fileChart" height="200"></canvas>
+              <div v-if="fileChartEmpty" class="chart-overlay">暂无文件数据</div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>集群节点详情</h2>
+        <div class="grid two">
+          <article class="card" v-for="node in nodes" :key="node.endpoint">
+            <header style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.8rem;">
+              <h3 style="margin:0;flex:1;">{{ node.node || node.endpoint }}</h3>
+              <span :class="stateClass(node.state)">{{ node.state }}</span>
+              <span v-if="node.drained" class="badge" style="background:#fde68a;color:#78350f;">暂停调度</span>
+            </header>
+            <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.4rem;">
+              <li>连接数：<strong>{{ fallback(node.zk_num_alive_connections, 'N/A') }}</strong></li>
+              <li>平均延迟：<strong>{{ formatLatency(node) }}</strong></li>
+              <li>未处理请求：<strong>{{ fallback(node.zk_outstanding_requests, 'N/A') }}</strong></li>
+              <li>选举轮次：<strong>{{ fallback(node.zk_epoch, 'N/A') }}</strong></li>
+              <li v-if="node.drain_reason" style="color:#b7791f;">过载说明：{{ node.drain_reason }}</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Grafana 监控面板</h2>
+        <p class="muted">快速跳转至 Grafana 获取更多指标详情。默认账户 <code>admin/admin</code>，已开启匿名只读。</p>
+        <iframe src="http://localhost:3000/d/zk-demo-overview?orgId=1&refresh=10s&kiosk" width="100%" height="420" frameborder="0"></iframe>
+      </section>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+  <script type="module">
+    import { createApp, markRaw } from 'https://cdn.jsdelivr.net/npm/vue@3.4.27/dist/vue.esm-browser.prod.js';
+    import { API_BASE, fetchJson, stateClass } from './assets/common.js';
+
+    createApp({
+      data() {
+        return {
+          overview: { cluster: { nodes: [], leader: null }, tasks: [] },
+          schedulerInfo: { counts: {}, threshold: 0, message: '' },
+          lastUpdated: null,
+          error: null,
+          taskChart: null,
+          fileChart: null,
+          taskChartEmpty: true,
+          fileChartEmpty: true,
+        };
+      },
+      computed: {
+        nodes() {
+          return this.overview.cluster?.nodes || [];
+        },
+        tasks() {
+          return this.overview.tasks || [];
+        },
+        taskStats() {
+          const total = this.tasks.length;
+          const succeeded = this.tasks.filter(t => t.status === 'succeeded').length;
+          const running = this.tasks.filter(t => t.status === 'running').length;
+          const failed = this.tasks.filter(t => t.status === 'failed').length;
+          return { total, succeeded, running, failed };
+        },
+        lastUpdatedDisplay() {
+          return this.lastUpdated ? new Date(this.lastUpdated).toLocaleString() : '加载中…';
+        },
+        loadSummary() {
+          const counts = this.schedulerInfo.counts || {};
+          const nodes = (this.nodes || []).map(node => node.node || (node.endpoint ? node.endpoint.split(':')[0] : null)).filter(Boolean);
+          if (!nodes.length) return [];
+          const max = nodes.reduce((acc, node) => Math.max(acc, counts[node] ?? 0), 0);
+          const min = nodes.reduce((acc, node) => Math.min(acc, counts[node] ?? 0), Number.MAX_SAFE_INTEGER);
+          return nodes.map(node => {
+            const count = counts[node] ?? 0;
+            const percent = max > 0 ? Math.max(8, Math.round((count / max) * 100)) : 0;
+            let status = '负载适中';
+            let stateClass = '';
+            if (max !== min) {
+              if (count === max) {
+                status = '热点节点，等待调度';
+                stateClass = 'overloaded';
+              } else if (count === min) {
+                status = '最空闲，优先接收任务';
+                stateClass = 'balanced';
+              }
+            }
+            return { node, count, percent, status, stateClass };
+          });
+        },
+        loadSummaryMessage() {
+          if (!this.loadSummary.length) return '等待加载负载数据…';
+          const counts = this.schedulerInfo.counts || {};
+          const values = Object.values(counts);
+          if (!values.length) return '未检测到文件记录，调度器保持空闲。';
+          const max = Math.max(...values);
+          const min = Math.min(...values);
+          if (max === min) return '所有节点文件数一致，调度保持平衡。';
+          return this.schedulerInfo.message || `当前最大差异 ${max - min} 个文件，阈值 ${this.schedulerInfo.threshold}`;
+        },
+      },
+      methods: {
+        stateClass,
+        fallback(value, defaultValue = '—') {
+          return value === undefined || value === null || value === '' ? defaultValue : value;
+        },
+        formatLatency(node) {
+          const latency = node.zk_avg_latency_ms || node.zk_avg_request_latency_ms || node.zk_avg_latency;
+          return latency !== undefined ? `${latency} ms` : 'N/A';
+        },
+        getChartCtor() {
+          const chartGlobal = window.Chart ?? window.ChartJS;
+          const ctor = chartGlobal && (chartGlobal.Chart ?? chartGlobal.ChartConstructor ?? chartGlobal);
+          return typeof ctor === 'function' ? ctor : null;
+        },
+        initCharts() {
+          const ChartCtor = this.getChartCtor();
+          if (!ChartCtor) {
+            console.error('Chart.js 未正确加载');
+            return;
+          }
+
+          // 任务分布图表
+          const taskCtx = document.getElementById('taskChart');
+          if (taskCtx && !this.taskChart) {
+            this.taskChart = markRaw(new ChartCtor(taskCtx, {
+              type: 'doughnut',
+              data: {
+                labels: [],
+                datasets: [{
+                  label: '任务数量',
+                  data: [],
+                  backgroundColor: [
+                    'rgba(59, 130, 246, 0.8)',
+                    'rgba(16, 185, 129, 0.8)',
+                    'rgba(245, 158, 11, 0.8)',
+                    'rgba(239, 68, 68, 0.8)',
+                  ],
+                  borderColor: 'white',
+                  borderWidth: 2,
+                }],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    position: 'bottom',
+                  },
+                  tooltip: {
+                    callbacks: {
+                      label: function(context) {
+                        return context.label + ': ' + context.parsed + ' 个任务';
+                      }
+                    }
+                  }
+                },
+              },
+            }));
+          }
+
+          // 文件分布图表
+          const fileCtx = document.getElementById('fileChart');
+          if (fileCtx && !this.fileChart) {
+            this.fileChart = markRaw(new ChartCtor(fileCtx, {
+              type: 'bar',
+              data: {
+                labels: [],
+                datasets: [{
+                  label: '文件数量',
+                  data: [],
+                  backgroundColor: 'rgba(99, 102, 241, 0.8)',
+                  borderColor: 'rgba(99, 102, 241, 1)',
+                  borderWidth: 1,
+                }],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1 },
+                  },
+                },
+                plugins: {
+                  legend: {
+                    display: false,
+                  },
+                  tooltip: {
+                    callbacks: {
+                      label: function(context) {
+                        return '文件数: ' + context.parsed.y;
+                      }
+                    }
+                  }
+                },
+              },
+            }));
+          }
+        },
+        updateCharts() {
+          // 更新任务图表
+          if (this.taskChart && this.taskChart.data && this.taskChart.data.datasets && this.taskChart.data.datasets[0]) {
+            try {
+              const tasksByNode = {};
+              this.tasks.forEach(task => {
+                const node = task.node || 'unknown';
+                tasksByNode[node] = (tasksByNode[node] || 0) + 1;
+              });
+
+              const labels = Object.keys(tasksByNode);
+              const data = Object.values(tasksByNode);
+
+              this.taskChart.data.labels = labels;
+              this.taskChart.data.datasets[0].data = data;
+              this.taskChart.update('none'); // 使用 'none' 模式避免动画和潜在的响应式问题
+              this.taskChartEmpty = labels.length === 0;
+            } catch (err) {
+              console.warn('Failed to update task chart:', err);
+            }
+          }
+
+          // 更新文件图表
+          if (this.fileChart && this.fileChart.data && this.fileChart.data.datasets && this.fileChart.data.datasets[0]) {
+            try {
+              const counts = this.schedulerInfo.counts || {};
+              const labels = Object.keys(counts).sort();
+              const data = labels.map(label => counts[label]);
+
+              this.fileChart.data.labels = labels;
+              this.fileChart.data.datasets[0].data = data;
+              this.fileChart.update('none'); // 使用 'none' 模式避免动画和潜在的响应式问题
+              this.fileChartEmpty = labels.length === 0 || data.every(v => v === 0);
+            } catch (err) {
+              console.warn('Failed to update file chart:', err);
+            }
+          }
+        },
+        async refreshAll() {
+          try {
+            const [overview, scheduler] = await Promise.all([
+              fetchJson(`${API_BASE}/overview`),
+              fetchJson(`${API_BASE}/scheduler/diagnostics`),
+            ]);
+            this.overview = overview;
+            this.schedulerInfo = scheduler;
+            this.lastUpdated = Date.now();
+            this.updateCharts();
+          } catch (err) {
+            console.error(err);
+            this.error = err.message;
+          }
+        },
+      },
+      mounted() {
+        this.initCharts();
+        this.refreshAll();
+        setInterval(() => this.refreshAll(), 5000);
+      },
+    }).mount('#overview-app');
+  </script>
+</body>
+</html>

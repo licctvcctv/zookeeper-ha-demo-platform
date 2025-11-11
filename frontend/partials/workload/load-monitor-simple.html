@@ -1,0 +1,53 @@
+<section class="panel">
+  <h2>节点负载实时监控</h2>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+    <p class="muted" style="margin: 0;">实时展示各节点的文件分布和负载状态（每 8 秒自动刷新）</p>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+      <span class="last-update-time">
+        <span style="color: var(--text-muted); font-size: 0.85rem;">最后更新：</span>
+        <strong>{{ lastUpdateTime }}</strong>
+      </span>
+      <select v-model="chartType" @change="switchChartType" style="padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid var(--border-soft);">
+        <option value="bar">柱状图</option>
+        <option value="horizontalBar">横向柱状图</option>
+        <option value="pie">饼图</option>
+        <option value="doughnut">环形图</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="grid two">
+    <article class="card chart-card">
+      <h3 style="margin-top:0; display: flex; justify-content: space-between; align-items: center;">
+        <span>节点文件分布</span>
+        <span class="chart-legend-info" style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted);">
+          阈值: {{ schedulerInfo.threshold }} 个文件
+        </span>
+      </h3>
+      <div class="chart-wrapper">
+        <canvas id="distributionChart" height="280"></canvas>
+        <div v-if="chartError" class="chart-overlay error">{{ chartError }}</div>
+        <div v-else-if="chartEmpty" class="chart-overlay">暂无数据，请先点击"一键生成测试负载"按钮。</div>
+      </div>
+    </article>
+
+    <article class="card chart-card">
+      <h3 style="margin-top:0;">节点负载对比</h3>
+      <div class="chart-wrapper">
+        <canvas id="loadComparisonChart" height="280"></canvas>
+        <div v-if="chartEmpty" class="chart-overlay">暂无数据</div>
+      </div>
+    </article>
+  </div>
+
+  <div style="margin-top: 1.2rem;">
+    <article class="card">
+      <h3 style="margin-top:0;">负载趋势</h3>
+      <div class="chart-wrapper" style="min-height: 250px;">
+        <canvas id="loadTrendChart" height="250"></canvas>
+        <div v-if="chartEmpty" class="chart-overlay">暂无数据</div>
+      </div>
+    </article>
+  </div>
+</section>
+

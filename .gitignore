@@ -7,3 +7,6 @@ node_modules/
 # Logs
 logs/
 *.log
+
+# MCP lock files
+.mcp-ssh.lock

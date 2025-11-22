@@ -1038,3 +1038,10 @@ button.primary:hover {
   color: var(--text-muted);
   text-align: center;
 }
+
+.btn { padding: 0.4rem 0.8rem; border-radius: 6px; border: none; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.btn-sm { padding: 0.25rem 0.6rem; font-size: 0.75rem; }
+.btn-warning { background: #f59e0b; color: white; }
+.btn-warning:hover { background: #d97706; }
+.btn-success { background: #10b981; color: white; }
+.btn-success:hover { background: #059669; }

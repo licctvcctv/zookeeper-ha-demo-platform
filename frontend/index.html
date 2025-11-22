@@ -1,20 +1,23 @@
 <!DOCTYPE html>
 <html lang="zh-cn">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ZooKeeper HA Demo 控制台</title>
-  <link rel="stylesheet" href="./assets/styles.css" />
+  <link rel="stylesheet" href="/assets/styles.css" />
 </head>
+
 <body>
   <main>
-    <div data-include="./partials/index/hero.html"></div>
-    <div data-include="./partials/index/navbar.html"></div>
-    <div data-include="./partials/index/modules.html"></div>
+    <div data-include="/partials/index/hero.html"></div>
+    <div data-include="/partials/index/navbar.html"></div>
+    <div data-include="/partials/index/modules.html"></div>
   </main>
   <script type="module">
-    import { loadPartials } from './assets/partials.js';
+    import { loadPartials } from '/assets/partials.js';
     await loadPartials();
   </script>
 </body>
+
 </html>

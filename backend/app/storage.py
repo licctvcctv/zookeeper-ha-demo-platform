@@ -15,7 +15,7 @@ from . import db
 SETTINGS = get_settings()
 
 
-def _node_counts() -> Dict[str, int]:
+def get_node_counts() -> Dict[str, int]:
     counts: Dict[str, int] = {node.split(":")[0]: 0 for node in SETTINGS.zk_nodes}
     for record in db.get_files():
         counts[record["node"]] = counts.get(record["node"], 0) + 1
@@ -23,12 +23,24 @@ def _node_counts() -> Dict[str, int]:
 
 
 def select_target_node() -> str:
-    counts = _node_counts()
+    counts = get_node_counts()
+    node_states = db.get_node_states()
+    drained_nodes = {node for node, info in node_states.items() if info.get("drained")}
+    
     # fallback: ensure every node key exists
     for node in SETTINGS.zk_nodes:
         host = node.split(":")[0]
         counts.setdefault(host, 0)
-    sorted_nodes = sorted(counts.items(), key=lambda item: item[1])
+    
+    # Filter out drained nodes - only active nodes can receive uploads
+    active_nodes = [(node, count) for node, count in counts.items() 
+                    if node not in drained_nodes]
+    
+    if not active_nodes:
+        raise ValueError("所有节点均已暂停，无法接收新文件上传")
+    
+    # Select the node with fewest files from active nodes
+    sorted_nodes = sorted(active_nodes, key=lambda item: item[1])
     return sorted_nodes[0][0]
 
 

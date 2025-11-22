@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="zh-cn">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ZooKeeper 运行概览</title>
   <link rel="stylesheet" href="./assets/styles.css" />
 </head>
+
 <body>
   <main>
     <header class="hero">
@@ -47,7 +49,9 @@
               <span>{{ item.node }}</span>
               <span class="load-count">{{ item.count }} 个文件</span>
             </header>
-            <div class="load-bar"><div class="load-bar-fill" :style="{ width: item.percent + '%' }"></div></div>
+            <div class="load-bar">
+              <div class="load-bar-fill" :style="{ width: item.percent + '%' }"></div>
+            </div>
             <p class="load-status">{{ item.status }}</p>
           </article>
         </div>
@@ -90,6 +94,11 @@
               <li>选举轮次：<strong>{{ fallback(node.zk_epoch, 'N/A') }}</strong></li>
               <li v-if="node.drain_reason" style="color:#b7791f;">过载说明：{{ node.drain_reason }}</li>
             </ul>
+            <footer
+              style="margin-top:1rem;display:flex;gap:0.5rem;justify-content:flex-end;border-top:1px solid #f1f5f9;padding-top:0.8rem;">
+              <button v-if="!node.drained" @click="drainNode(node)" class="btn btn-sm btn-warning">暂停调度</button>
+              <button v-else @click="undrainNode(node)" class="btn btn-sm btn-success">恢复调度</button>
+            </footer>
           </article>
         </div>
       </section>
@@ -97,7 +106,8 @@
       <section class="panel">
         <h2>Grafana 监控面板</h2>
         <p class="muted">快速跳转至 Grafana 获取更多指标详情。默认账户 <code>admin/admin</code>，已开启匿名只读。</p>
-        <iframe src="http://localhost:3000/d/zk-demo-overview?orgId=1&refresh=10s&kiosk" width="100%" height="420" frameborder="0"></iframe>
+        <iframe src="http://localhost:3000/d/zk-demo-overview?orgId=1&refresh=10s&kiosk" width="100%" height="420"
+          frameborder="0"></iframe>
       </section>
     </div>
   </main>
@@ -221,7 +231,7 @@
                   },
                   tooltip: {
                     callbacks: {
-                      label: function(context) {
+                      label: function (context) {
                         return context.label + ': ' + context.parsed + ' 个任务';
                       }
                     }
@@ -261,7 +271,7 @@
                   },
                   tooltip: {
                     callbacks: {
-                      label: function(context) {
+                      label: function (context) {
                         return '文件数: ' + context.parsed.y;
                       }
                     }
@@ -324,6 +334,36 @@
             this.error = err.message;
           }
         },
+        async drainNode(node) {
+          console.log("drainNode called for", node);
+          if (!window.confirm(`确定要暂停节点 ${node.node || node.endpoint.split(':')[0]} 吗？暂停后该节点将不再接收新文件。`)) return;
+          try {
+            const nodeId = node.node || node.endpoint.split(':')[0];
+            console.log("Sending drain request for", nodeId);
+            await fetchJson(`${API_BASE}/nodes/${nodeId}/drain`, { method: 'POST' });
+            console.log("Drain request success, refreshing...");
+            await this.refreshAll();
+            console.log("Refresh complete");
+          } catch (err) {
+            console.error("Drain failed", err);
+            alert(`操作失败: ${err.message}`);
+          }
+        },
+        async undrainNode(node) {
+          console.log("undrainNode called for", node);
+          if (!window.confirm(`确定要恢复节点 ${node.node || node.endpoint.split(':')[0]} 吗？`)) return;
+          try {
+            const nodeId = node.node || node.endpoint.split(':')[0];
+            console.log("Sending undrain request for", nodeId);
+            await fetchJson(`${API_BASE}/nodes/${nodeId}/undrain`, { method: 'POST' });
+            console.log("Undrain request success, refreshing...");
+            await this.refreshAll();
+            console.log("Refresh complete");
+          } catch (err) {
+            console.error("Undrain failed", err);
+            alert(`操作失败: ${err.message}`);
+          }
+        },
       },
       mounted() {
         this.initCharts();
@@ -333,4 +373,5 @@
     }).mount('#overview-app');
   </script>
 </body>
+
 </html>

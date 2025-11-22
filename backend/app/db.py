@@ -79,6 +79,16 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_tasks_updated_at ON tasks(updated_at)"
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS node_states (
+                node TEXT PRIMARY KEY,
+                drained INTEGER NOT NULL DEFAULT 0,
+                reason TEXT,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
 
 
 def record_operation(
@@ -267,3 +277,37 @@ def list_tasks(limit: int = 100) -> List[Dict[str, Any]]:
                 record["payload"] = None
         tasks.append(record)
     return tasks
+
+
+def set_node_state(node: str, *, drained: bool, reason: Optional[str] = None) -> None:
+    """Set the drained state of a node."""
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO node_states (node, drained, reason, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(node) DO UPDATE SET
+                drained=excluded.drained,
+                reason=excluded.reason,
+                updated_at=excluded.updated_at
+            """,
+            (node, 1 if drained else 0, reason, now),
+        )
+
+
+def get_node_states() -> Dict[str, Dict[str, Any]]:
+    """Get the drained state of all nodes."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT node, drained, reason, updated_at FROM node_states"
+        ).fetchall()
+    result: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        result[row["node"]] = {
+            "drained": bool(row["drained"]),
+            "reason": row["reason"],
+            "updated_at": row["updated_at"],
+        }
+    return result
+

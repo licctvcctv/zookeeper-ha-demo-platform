@@ -270,8 +270,14 @@ def _bulk_generate_files(*, count: int, size_kb: int, mode: BulkUploadMode, targ
     created: List[Dict[str, Any]] = []
     per_node: Dict[str, int] = {}
     history_action = "bulk_upload_pinned" if mode == BulkUploadMode.PIN else "bulk_upload_auto"
+    
+    # Pre-fetch node states to check for drained nodes
+    node_states = db.get_node_states()
+    
     for _ in range(count):
         if mode == BulkUploadMode.PIN and target_node:
+            if node_states.get(target_node, {}).get("drained"):
+                raise ValueError(f"节点 {target_node} 已暂停，无法接收文件")
             node = target_node
         else:
             node = storage.select_target_node()
@@ -572,6 +578,12 @@ async def api_demo_stress(payload: DemoStressRequest) -> Dict[str, Any]:
     allowed_nodes = {node.split(":")[0] for node in settings.zk_nodes}
     if payload.node not in allowed_nodes:
         raise HTTPException(status_code=400, detail=f"未知节点 {payload.node}")
+        
+    # Check if node is drained
+    node_states = db.get_node_states()
+    if node_states.get(payload.node, {}).get("drained"):
+        raise HTTPException(status_code=400, detail=f"节点 {payload.node} 已暂停，无法接收压力测试文件")
+
     before_plan, _ = build_scheduler_plan()
     worker: DemoWorkload = getattr(app.state, "demo_workload", DemoWorkload())
     app.state.demo_workload = worker

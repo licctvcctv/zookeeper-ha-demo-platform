@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="zh-cn">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ZooKeeper 负载与任务演示</title>
-  <link rel="stylesheet" href="./assets/styles.css" />
+  <link rel="stylesheet" href="/assets/styles.css" />
 </head>
+
 <body>
   <main>
     <header class="hero">
@@ -14,19 +16,20 @@
     </header>
 
     <nav class="navbar">
-      <a href="overview.html">运行概览</a>
-      <a href="workload.html" class="active">负载与任务</a>
-      <a href="logs.html">日志与审计</a>
+      <a href="/overview.html">运行概览</a>
+      <a href="/workload.html" class="active">负载与任务</a>
+      <a href="/logs.html">日志与审计</a>
     </nav>
 
     <div id="workload-app">
-      <div data-include="./partials/workload/controls-simple.html"></div>
-      <div data-include="./partials/workload/visualization.html"></div>
-      <div data-include="./partials/workload/load-monitor-simple.html"></div>
+      <div data-include="/partials/workload/controls-simple.html"></div>
+      <div data-include="/partials/workload/visualization.html"></div>
+      <div data-include="/partials/workload/load-monitor-simple.html"></div>
     </div>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" crossorigin="anonymous"></script>
-  <script type="module" src="./assets/workload-app.js"></script>
+  <script type="module" src="/assets/workload-app.js"></script>
 </body>
+
 </html>

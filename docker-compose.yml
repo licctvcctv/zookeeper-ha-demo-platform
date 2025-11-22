@@ -177,6 +177,7 @@ services:
       - ./logs/backend:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock
       - ./frontend:/app/frontend
+      - ./backend/app:/app/app
     ports:
       - "8080:8080"
     depends_on:
